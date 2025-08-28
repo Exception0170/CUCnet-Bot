@@ -47,8 +47,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_data and user_data[0]:
         welcome_text = """
-        🤖 Welcome to the VPN Management Bot!
-        
+        🤖 Welcome to the CUCnet Management Bot!
+
         Available commands:
         /profile - Create a new VPN profile
         /profiles - List your profiles
@@ -57,7 +57,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(welcome_text)
     else:
         welcome_text = """
-        🤖 Welcome to the VPN Management Bot!
+        🤖 Welcome to the CUCnet Management Bot!
         
         You need to be verified to use this bot. 
         Please use /verify to request access.
