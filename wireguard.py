@@ -122,83 +122,47 @@ def remove_peer_from_server(public_key):
         if not check_wg_config_exists():
             logger.error("WireGuard config file does not exist")
             return False
-        
-        # First, remove the peer from the running WireGuard interface
-        try:
-            subprocess.run(['sudo', 'wg', 'set', 'wg0', 'peer', public_key, 'remove'], 
-                         capture_output=True, check=True)
-            logger.info(f"Removed peer {public_key} from running WireGuard interface")
-        except subprocess.CalledProcessError as e:
-            # It's possible the peer wasn't active, so we continue with config removal
-            logger.warning(f"Peer might not be active in running interface: {e}")
-        
         # Read current config with sudo
         result = subprocess.run(['sudo', 'cat', WG_CONFIG], capture_output=True, text=True, check=True)
         lines = result.stdout.split('\n')
-        
+
         # Filter out the peer
         new_lines = []
         in_peer_section = False
         peer_removed = False
         current_peer_lines = []
-        skip_section = False
         
         for line in lines:
             if line.strip().startswith('[Peer]'):
                 if in_peer_section:
-                    # End of previous peer section
-                    if not skip_section:
+                    # End of previous peer section, check if it's our target
+                    if not any(public_key in l for l in current_peer_lines):
                         new_lines.extend(current_peer_lines)
+                    else:
+                        peer_removed = True
                     current_peer_lines = []
-                    skip_section = False
-                
                 in_peer_section = True
                 current_peer_lines.append(line + '\n')
-                # Check if this is the peer we want to remove
-                skip_section = False
-                
             elif in_peer_section:
                 current_peer_lines.append(line + '\n')
-                if line.strip().startswith('PublicKey') and public_key in line:
-                    skip_section = True
-                    peer_removed = True
-                
-                # Check for end of section (empty line or new section)
                 if line.strip() == '' or (line.strip().startswith('[') and not line.strip().startswith('[Peer]')):
-                    if not skip_section:
+                    # End of peer section
+                    if not any(public_key in l for l in current_peer_lines):
                         new_lines.extend(current_peer_lines)
+                    else:
+                        peer_removed = True
                     in_peer_section = False
                     current_peer_lines = []
-                    skip_section = False
-                    if line.strip() != '':
-                        new_lines.append(line + '\n')
-            else:
+                    new_lines.append(line + '\n')
+                elif line.strip().startswith('[Peer]'):
+                    # Another peer section starting
+                    if not any(public_key in l for l in current_peer_lines):
+                        new_lines.extend(current_peer_lines)
+                    else:
+                        peer_removed = True
+                    current_peer_lines = [line + '\n']
+            else:   
                 new_lines.append(line + '\n')
-        
-        # Handle the last section if we're still in a peer section
-        if in_peer_section:
-            if not skip_section:
-                new_lines.extend(current_peer_lines)
-        
-        if peer_removed:
-            # Create temporary file with new content
-            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-                temp_file.writelines(new_lines)
-                temp_path = temp_file.name
-            
-            # Replace the config file using sudo
-            subprocess.run(['sudo', 'cp', temp_path, WG_CONFIG], check=True)
-            subprocess.run(['sudo', 'chmod', '600', WG_CONFIG], check=True)
-            
-            # Clean up temp file
-            os.unlink(temp_path)
-            
-            logger.info(f"Removed peer with public key {public_key} from config file")
-            return True
-        else:
-            logger.warning(f"Peer with public key {public_key} not found in config file")
-            return False
-            
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to modify WireGuard config: {e}")
         return False
